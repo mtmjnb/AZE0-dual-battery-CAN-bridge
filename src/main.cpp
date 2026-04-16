@@ -37,6 +37,13 @@ const unsigned long period = 100;  //the value is a number of milliseconds
   int tempSegment1 = 0;
   int tempSegment2 = 0;
   int tempSegment = 0;
+  int QCfullCapacity1 = 0;
+  int QCfullCapacity2 = 0;
+  int QCfullCapacity = 0;
+  int QCremainCapacity1 = 0;
+  int QCremainCapacity2 = 0;
+  int QCremainCapacity = 0;
+
   // int temperature1 = 0;
   // int temperature2 = 0;
   // int temperature = 0;
@@ -53,7 +60,7 @@ const unsigned long period = 100;  //the value is a number of milliseconds
   const int maxDCFC = 400;    // kW * 0.10 (400 = 40kW)
 
 void setup(void) {
-  //Serial.begin(115200);
+  Serial.begin(115200);
   can1.begin();              // Battery 1
   can1.setClock(CLK_60MHz);
   can1.setBaudRate(500000);  // 500kbps data rate
@@ -90,6 +97,11 @@ void loop() {
       soc1 = (uint16_t(bytes[0] << 2) + uint16_t(bytes[1] >> 6));                   // * 0.1;
       break;
     }
+    case 0x59E: {
+      QCfullCapacity1 = (uint16_t(bytes[2] << 4) + uint16_t(bytes[3] >> 4));                   // * 100 Wh
+      QCremainCapacity1 = (uint16_t(bytes[3] << 5) + uint16_t(bytes[4] >> 3));                   // * 100 Wh
+      break;
+    }
     case 0x5BC: {
       GIDS1 = (uint16_t(bytes[0] << 2) + uint16_t(bytes[1] >> 6));                   // GIDS
       tempSegment1 = (uint16_t(bytes[3]));                   // Temp segment for dashboard
@@ -104,10 +116,10 @@ void loop() {
     case 0x1DB: {
       battCur2 = uint16_t(bytes[0] << 3) + uint16_t(bytes[1] >> 5);
       battCur = battCur1 + battCur2;
-      battCur = battCur << 5;
+      battCur = battCur << 5;                                                    // Shift bits 5 places to the left to stuff into CAN frame
       msg.buf[0] = highByte(battCur);
-      msg.buf[1] = bytes[1] & B00011111;
-      msg.buf[1] = msg.buf[1] + lowByte(battCur);
+      msg.buf[1] = bytes[1] & B00011111;                                         // Clear the bits used for battCur 
+      msg.buf[1] = msg.buf[1] + lowByte(battCur);                                //and add the low byte of battCur shifted 5 places to the left
       battVolt2 = (uint16_t(bytes[2] << 2) + uint16_t(bytes[3] >> 6));                     // / 2;
       //battVolt = battVolt2;
       for ( uint8_t i = 0; i < 7; i++ ) {
@@ -186,8 +198,36 @@ void loop() {
 
       break;
     }
+    case 0x59E: {
+      QCfullCapacity2 = (uint16_t(bytes[2] << 4) + uint16_t(bytes[3] >> 4));                   // * 100 Wh
+      QCremainCapacity2 = (uint16_t(bytes[3] << 5) + uint16_t(bytes[4] >> 3));                   // * 100 Wh
+      QCfullCapacity = QCfullCapacity1 + QCfullCapacity2;
+      QCremainCapacity = QCremainCapacity1 + QCremainCapacity2;
+      QCfullCapacity = QCfullCapacity << 4;
+      QCremainCapacity = QCremainCapacity << 3;
+      
+      msg.buf[2] = QCfullCapacity >> 4;
+      msg.buf[3] = lowByte(QCfullCapacity << 4) + (QCremainCapacity >> 5);
+      msg.buf[4] = lowByte(QCremainCapacity << 3);
 
-    
+      Serial.print("QC full capacity: ");
+      Serial.print(QCfullCapacity); 
+      Serial.print(" Wh, QC remaining capacity: ");
+      Serial.print(QCremainCapacity);
+      Serial.println(" Wh");
+      Serial.print("QC full capacity1: ");
+      Serial.print(QCfullCapacity1);  
+      Serial.print(" Wh, QC remaining capacity1: ");
+      Serial.print(QCremainCapacity1);
+      Serial.println(" Wh");
+      Serial.print("QC full capacity2: ");
+      Serial.print(QCfullCapacity2);  
+      Serial.print(" Wh, QC remaining capacity2: ");
+      Serial.print(QCremainCapacity2);
+      Serial.println(" Wh");
+      
+      break;
+    }
 
      case 0x5BC: {
       GIDS2 = (uint16_t(bytes[0] << 2) + uint16_t(bytes[1] >> 6));                   // GIDS
